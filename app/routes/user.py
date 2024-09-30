@@ -17,8 +17,31 @@ def role_required(role):
         return wrapper
     return decorator
 
+# Create Main Admin User
+def create_admin_user():
+    admin_email = 'gowheels@admin.co.ke'
+    admin_username = 'GoWheelsAdmin'
+    admin_password = 'Admin@123'
+    
+    existing_admin = User.query.filter_by(email=admin_email).first()
+    if not existing_admin:
+        try:
+            admin_user = User(
+                username=admin_username,
+                email=admin_email,
+                role='admin'
+            )
+            admin_user.set_password(admin_password)
+            db.session.add(admin_user)
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+        except AssertionError as e:
+            print(f"Failed to create admin user: {str(e)}")
+
 class Users(Resource):
     @jwt_required()
+    @role_required('admin')
     def get(self):
         users = User.query.all()
         return make_response(jsonify([user.to_dict() for user in users]), 200)
@@ -50,13 +73,16 @@ class Users(Resource):
 
 class UserByID(Resource):
     @jwt_required()
-    def get(self, user_id):
+    def get(self, user_id=None):
+        if user_id is None:
+            user_id = get_jwt_identity()
         user = User.query.get_or_404(user_id)
         return make_response(jsonify(user.to_dict()), 200)
 
     @jwt_required()
-    def patch(self):
-        user_id = get_jwt_identity()
+    def patch(self, user_id=None):
+        if user_id is None:
+            user_id = get_jwt_identity()
         user = User.query.get_or_404(user_id)
         data = request.form
         image = request.files.get('image')
@@ -66,8 +92,13 @@ class UserByID(Resource):
                 user.username = data['username']
             if 'email' in data:
                 user.email = data['email'].lower()
-            if 'password' in data:
-                user.set_password(data['password'])
+            if 'old_password' in data and 'new_password' in data:
+                if user.check_password(data['old_password']):
+                    if data['old_password'] == data['new_password']:
+                        return make_response(jsonify({"message": "New password cannot be the same as the old password"}), 400)
+                    user.set_password(data['new_password'])
+                else:
+                    return make_response(jsonify({"message": "Old password is incorrect"}), 400)
             if image:
                 user.upload_image(image)
             db.session.commit()
@@ -87,5 +118,4 @@ class UserByID(Resource):
         return make_response(jsonify({"message": "User deleted successfully"}), 200)
 
 user_api.add_resource(Users, '/users')
-user_api.add_resource(UserByID, '/users/<int:user_id>')
-user_api.add_resource(UserByID, '/users/me', endpoint='user_me')
+user_api.add_resource(UserByID, '/user', '/user/<int:user_id>')
