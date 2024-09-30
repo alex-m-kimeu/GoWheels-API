@@ -1,12 +1,12 @@
 from flask import Flask
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
-from flask_bcrypt import Bcrypt
 from flask_cors import CORS
 import cloudinary
 from .config import Config
 from .models import db
 from .routes import auth_bp, user_bp
+from .routes.user import create_admin_user
 
 def create_app():
     app = Flask(__name__)
@@ -19,14 +19,19 @@ def create_app():
         secure=True
     )
 
-    migrate = Migrate(app, db)
+    Migrate(app, db)
     db.init_app(app)
-    bcrypt = Bcrypt(app)
-    jwt = JWTManager(app)
+    JWTManager(app)
     CORS(app, resources={r"/*": {"origins": "*"}})
 
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(user_bp, url_prefix='/api')
+
+    # Create admin user if it doesn't exist
+    with app.app_context():
+        
+        # Create admin user if it doesn't exist
+        create_admin_user()
 
     return app
